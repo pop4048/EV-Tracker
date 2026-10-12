@@ -1,0 +1,15 @@
+{
+  "name": "EV Charge Tracker",
+  "short_name": "EV Tracker",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3B82F6",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/8282/8282215.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
