@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>EV Tracker</title>
+    
+    <!-- เชื่อมต่อระบบแอปมือถือ PWA -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#3B82F6" />
+    
+    <!-- โหลดฟอนต์ภาษาไทย Noto Sans Thai -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- โหลดระบบ CSS อัตโนมัติ (Tailwind) เพื่อให้เว็บสวยงามทันที -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { sans: ['"Noto Sans Thai"', 'sans-serif'] }
+          }
+        }
+      }
+    </script>
+  </head>
+  <body class="bg-gray-100">
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
