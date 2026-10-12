@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Home, Clock, PlusCircle, Settings, Battery, Zap, Map, Edit, Trash2 } from 'lucide-react';
+import { Home, Clock, PlusCircle, Settings, Battery, Zap, Map, Edit, Trash2, CheckCircle2 } from 'lucide-react';
 
 export default function App() {
-  // 1. ระบบจัดการข้อมูลและการตั้งค่า (LocalStorage)
   const [records, setRecords] = useState(() => {
     const saved = localStorage.getItem("ev_records");
     return saved ? JSON.parse(saved) : [];
@@ -11,19 +10,17 @@ export default function App() {
   const [secondaryColor, setSecondaryColor] = useState(() => localStorage.getItem("ev_secondaryColor") || "gray");
 
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [summaryMode, setSummaryMode] = useState("month"); // week, month
+  const [summaryMode, setSummaryMode] = useState("month"); 
   const [isEditing, setIsEditing] = useState(false);
 
-  // ฟอร์มข้อมูล
-  const initialForm = { id: '', date: new Date().toISOString().slice(0, 16), batteryBefore: '', batteryAfter: '', cost: '', pricePerKwh: '', distance: '' };
+  // ฟอร์มข้อมูล เพิ่มช่อง batteryRemaining
+  const initialForm = { id: '', date: new Date().toISOString().slice(0, 16), batteryBefore: '', batteryAfter: '', cost: '', pricePerKwh: '', distance: '', batteryRemaining: '' };
   const [formData, setFormData] = useState(initialForm);
 
-  // บันทึกข้อมูลลงเครื่องทุกครั้งที่มีการเปลี่ยนแปลง
   useEffect(() => { localStorage.setItem("ev_records", JSON.stringify(records)); }, [records]);
   useEffect(() => { localStorage.setItem("ev_primaryColor", primaryColor); }, [primaryColor]);
   useEffect(() => { localStorage.setItem("ev_secondaryColor", secondaryColor); }, [secondaryColor]);
 
-  // 2. ระบบชุดสี (Mix & Match)
   const colors = {
     blue: { bg: 'bg-blue-600', text: 'text-blue-600', active: 'text-blue-600', border: 'border-blue-600', hover: 'hover:bg-blue-50' },
     green: { bg: 'bg-green-600', text: 'text-green-600', active: 'text-green-600', border: 'border-green-600', hover: 'hover:bg-green-50' },
@@ -43,7 +40,6 @@ export default function App() {
   const theme = colors[primaryColor];
   const bgSec = secColors[secondaryColor];
 
-  // 3. ฟังก์ชันคำนวณและจัดการข้อมูล
   const handleSave = (e) => {
     e.preventDefault();
     const newRecord = {
@@ -54,6 +50,7 @@ export default function App() {
       cost: Number(formData.cost),
       pricePerKwh: Number(formData.pricePerKwh),
       distance: formData.distance ? Number(formData.distance) : null,
+      batteryRemaining: formData.distance && formData.batteryRemaining ? Number(formData.batteryRemaining) : null,
     };
 
     if (isEditing) {
@@ -68,7 +65,11 @@ export default function App() {
   };
 
   const handleEdit = (record) => {
-    setFormData(record);
+    setFormData({
+      ...record,
+      distance: record.distance || '',
+      batteryRemaining: record.batteryRemaining !== null && record.batteryRemaining !== undefined ? record.batteryRemaining : ''
+    });
     setIsEditing(true);
     setActiveTab("add");
   };
@@ -79,7 +80,6 @@ export default function App() {
     }
   };
 
-  // กรองข้อมูลสำหรับหน้าสรุปผล
   const getSummaryData = () => {
     const now = new Date();
     return records.filter(r => {
@@ -96,14 +96,33 @@ export default function App() {
 
   const summaryData = getSummaryData();
   const totalCost = summaryData.reduce((sum, r) => sum + r.cost, 0);
-  const totalDistance = summaryData.reduce((sum, r) => sum + (r.distance || 0), 0);
   const totalKwh = summaryData.reduce((sum, r) => sum + (r.cost / r.pricePerKwh), 0);
-  const avgCostPerKm = totalDistance > 0 ? (totalCost / totalDistance).toFixed(2) : "0.00";
+  
+  // คำนวณค่าเฉลี่ยใหม่แบบแม่นยำ 100%
+  let sumDistance = 0;
+  let sumActualTripCost = 0;
 
-  // 4. ส่วนประกอบ UI หลัก
+  summaryData.forEach(r => {
+    if (r.distance) {
+      sumDistance += r.distance;
+      const percentAdded = r.batteryAfter - r.batteryBefore;
+      
+      // ถ้าระบุแบตเตอรี่คงเหลือ จะคำนวณจากแบตที่ใช้จริง
+      if (r.batteryRemaining !== null && r.batteryRemaining !== undefined && percentAdded > 0) {
+        const costPerPercent = r.cost / percentAdded;
+        const percentUsed = r.batteryAfter - r.batteryRemaining;
+        sumActualTripCost += (percentUsed * costPerPercent);
+      } else {
+        // รองรับข้อมูลเก่าที่ยังไม่มีช่องแบตคงเหลือ
+        sumActualTripCost += r.cost; 
+      }
+    }
+  });
+
+  const avgCostPerKm = sumDistance > 0 ? (sumActualTripCost / sumDistance).toFixed(2) : "0.00";
+
   return (
     <div className={`h-screen w-full flex flex-col font-sans overflow-hidden ${bgSec}`}>
-      {/* Header (ตรึงด้านบน) */}
       <header className={`shrink-0 p-4 text-white flex items-center justify-between shadow-md z-10 w-full ${theme.bg}`}>
         <div className="flex items-center gap-2 max-w-3xl mx-auto w-full">
           <Zap size={24} />
@@ -111,11 +130,10 @@ export default function App() {
         </div>
       </header>
 
-      {/* Content Area (เลื่อนได้เฉพาะส่วนนี้) */}
       <main className="flex-1 overflow-y-auto w-full p-4 pb-24">
         <div className="max-w-3xl mx-auto">
           
-          {/* ---- หน้าสรุปผล (Dashboard) ---- */}
+          {/* Dashboard */}
           {activeTab === "dashboard" && (
             <div className="space-y-4 animate-fade-in">
               <div className="flex bg-white rounded-lg p-1 shadow-sm">
@@ -125,7 +143,7 @@ export default function App() {
 
               <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-                  <p className="text-gray-500 text-sm mb-1">ค่าชาร์จรวม</p>
+                  <p className="text-gray-500 text-sm mb-1">ค่าชาร์จรวม (จ่ายจริง)</p>
                   <p className={`text-2xl font-bold ${theme.text}`}>฿{totalCost.toLocaleString()}</p>
                 </div>
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
@@ -134,17 +152,17 @@ export default function App() {
                 </div>
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
                   <p className="text-gray-500 text-sm mb-1">ระยะทางรวม</p>
-                  <p className={`text-2xl font-bold ${theme.text}`}>{totalDistance.toLocaleString()} <span className="text-sm font-normal">กม.</span></p>
+                  <p className={`text-2xl font-bold ${theme.text}`}>{sumDistance.toLocaleString()} <span className="text-sm font-normal">กม.</span></p>
                 </div>
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center">
-                  <p className="text-gray-500 text-sm mb-1">ค่าใช้จ่ายเฉลี่ย</p>
+                  <p className="text-gray-500 text-sm mb-1">เฉลี่ยต่อระยะทาง</p>
                   <p className={`text-2xl font-bold ${theme.text}`}>฿{avgCostPerKm} <span className="text-sm font-normal">/กม.</span></p>
                 </div>
               </div>
             </div>
           )}
 
-          {/* ---- หน้าประวัติ (History) ---- */}
+          {/* History */}
           {activeTab === "history" && (
             <div className="space-y-4">
               <h2 className="text-lg font-bold text-gray-800">ประวัติการชาร์จ</h2>
@@ -154,19 +172,36 @@ export default function App() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {records.map(record => {
                     const kwh = (record.cost / record.pricePerKwh).toFixed(1);
-                    const costPerKm = record.distance ? (record.cost / record.distance).toFixed(2) : null;
+                    const percentAdded = record.batteryAfter - record.batteryBefore;
                     const dateObj = new Date(record.date);
+                    
+                    let costPerKm = null;
+                    let usedPercent = null;
+
+                    // การคำนวณแบบแม่นยำรายทริป
+                    if (record.distance) {
+                      if (record.batteryRemaining !== null && record.batteryRemaining !== undefined && percentAdded > 0) {
+                        usedPercent = record.batteryAfter - record.batteryRemaining;
+                        const costPerPercent = record.cost / percentAdded;
+                        const actualTripCost = usedPercent * costPerPercent;
+                        costPerKm = (actualTripCost / record.distance).toFixed(2);
+                      } else {
+                        costPerKm = (record.cost / record.distance).toFixed(2);
+                      }
+                    }
                     
                     return (
                       <div key={record.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 relative overflow-hidden group">
-                        {!record.distance && (
+                        {!record.distance ? (
                           <div className={`absolute top-0 right-0 ${theme.bg} text-white text-xs px-3 py-1 rounded-bl-lg font-medium`}>รอระบุระยะทาง</div>
+                        ) : (
+                          <div className={`absolute top-0 right-0 bg-green-500 text-white text-xs px-3 py-1 rounded-bl-lg font-medium flex items-center gap-1`}><CheckCircle2 size={12}/> สมบูรณ์</div>
                         )}
                         <div className="flex justify-between items-start mb-3">
                           <div>
                             <p className="font-bold text-gray-800">{dateObj.toLocaleDateString('th-TH')} {dateObj.toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'})}</p>
                             <p className="text-sm text-gray-500 flex items-center gap-1 mt-1">
-                              <Battery size={14} /> {record.batteryBefore}% &rarr; {record.batteryAfter}%
+                              <Battery size={14} /> ชาร์จ {record.batteryBefore}% &rarr; {record.batteryAfter}%
                             </p>
                           </div>
                           <div className="text-right mt-4">
@@ -175,19 +210,23 @@ export default function App() {
                           </div>
                         </div>
                         
-                        <div className="bg-gray-50 rounded-lg p-3 flex justify-between items-center mt-2">
-                          <div>
-                            <p className="text-xs text-gray-500">ระยะทางที่ได้</p>
-                            <p className="font-semibold text-gray-700">{record.distance ? `${record.distance} กม.` : '-'}</p>
+                        <div className="bg-gray-50 rounded-lg p-3 grid grid-cols-3 gap-2 mt-2 items-center">
+                          <div className="text-center border-r border-gray-200">
+                            <p className="text-[10px] text-gray-500">ระยะทาง</p>
+                            <p className="font-semibold text-gray-700 text-sm">{record.distance ? `${record.distance} กม.` : '-'}</p>
                           </div>
-                          <div className="text-right">
-                            <p className="text-xs text-gray-500">อัตราสิ้นเปลือง</p>
-                            <p className={`font-semibold ${costPerKm ? theme.text : 'text-gray-400'}`}>{costPerKm ? `฿${costPerKm}/กม.` : '-'}</p>
+                          <div className="text-center border-r border-gray-200">
+                            <p className="text-[10px] text-gray-500">แบตที่ใช้ไป</p>
+                            <p className="font-semibold text-gray-700 text-sm">{usedPercent ? `${usedPercent}%` : '-'}</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-[10px] text-gray-500">เฉลี่ย</p>
+                            <p className={`font-semibold text-sm ${costPerKm ? theme.text : 'text-gray-400'}`}>{costPerKm ? `฿${costPerKm}` : '-'}</p>
                           </div>
                         </div>
 
                         <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
-                          <button onClick={() => handleEdit(record)} className={`flex-1 py-1.5 flex items-center justify-center gap-1 text-sm font-medium ${theme.text} ${theme.hover} rounded-md transition-colors`}><Edit size={16}/> {record.distance ? 'แก้ไข' : 'เพิ่มระยะทาง'}</button>
+                          <button onClick={() => handleEdit(record)} className={`flex-1 py-1.5 flex items-center justify-center gap-1 text-sm font-medium ${theme.text} ${theme.hover} rounded-md transition-colors`}><Edit size={16}/> {record.distance ? 'แก้ไข' : 'เพิ่มข้อมูลขับขี่'}</button>
                           <button onClick={() => handleDelete(record.id)} className="flex-1 py-1.5 flex items-center justify-center gap-1 text-sm font-medium text-red-500 hover:bg-red-50 rounded-md transition-colors"><Trash2 size={16}/> ลบ</button>
                         </div>
                       </div>
@@ -198,52 +237,69 @@ export default function App() {
             </div>
           )}
 
-          {/* ---- หน้าฟอร์มบันทึก (Add/Edit) ---- */}
+          {/* Add / Edit */}
           {activeTab === "add" && (
             <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
               <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                 {isEditing ? <Edit size={20} className={theme.text}/> : <PlusCircle size={20} className={theme.text}/>}
-                {isEditing ? 'แก้ไขข้อมูลการชาร์จ' : 'บันทึกการชาร์จใหม่'}
+                {isEditing ? 'แก้ไข/อัปเดตข้อมูล' : 'บันทึกการชาร์จใหม่'}
               </h2>
               <form onSubmit={handleSave} className="space-y-4">
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">วันที่และเวลา</label>
-                  <input type="datetime-local" required className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:border-transparent transition-all" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} style={{'--tw-ring-color': theme.bg.replace('bg-', '')}} />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-3">
+                {/* ข้อมูลการชาร์จ */}
+                <div className="bg-blue-50 p-4 rounded-lg space-y-4">
+                  <h3 className="text-sm font-bold text-blue-800 flex items-center gap-2"><Zap size={16}/> ข้อมูลตอนชาร์จไฟ</h3>
                   <div>
-                    <label className="block text-sm text-gray-600 mb-1">แบตเตอรี่ก่อน (%)</label>
-                    <input type="number" min="0" max="100" required className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2" placeholder="เช่น 20" value={formData.batteryBefore} onChange={e => setFormData({...formData, batteryBefore: e.target.value})} />
+                    <label className="block text-xs text-gray-600 mb-1">วันที่และเวลา</label>
+                    <input type="datetime-local" required className="w-full p-2.5 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:border-transparent transition-all" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} style={{'--tw-ring-color': theme.bg.replace('bg-', '')}} />
                   </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">แบตเตอรี่หลัง (%)</label>
-                    <input type="number" min="0" max="100" required className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2" placeholder="เช่น 80" value={formData.batteryAfter} onChange={e => setFormData({...formData, batteryAfter: e.target.value})} />
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">แบตก่อนชาร์จ (%)</label>
+                      <input type="number" min="0" max="100" required className="w-full p-2.5 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2" placeholder="เช่น 20" value={formData.batteryBefore} onChange={e => setFormData({...formData, batteryBefore: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">แบตหลังชาร์จ (%)</label>
+                      <input type="number" min="0" max="100" required className="w-full p-2.5 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2" placeholder="เช่น 80" value={formData.batteryAfter} onChange={e => setFormData({...formData, batteryAfter: e.target.value})} />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">จ่ายไปทั้งหมด (บาท)</label>
+                      <input type="number" step="0.01" min="0" required className="w-full p-2.5 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2" placeholder="เช่น 260" value={formData.cost} onChange={e => setFormData({...formData, cost: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">ราคาไฟ (บาท/kWh)</label>
+                      <input type="number" step="0.01" min="0" required className="w-full p-2.5 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2" placeholder="เช่น 7.5" value={formData.pricePerKwh} onChange={e => setFormData({...formData, pricePerKwh: e.target.value})} />
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">จ่ายไปทั้งหมด (บาท)</label>
-                    <input type="number" step="0.01" min="0" required className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2" placeholder="เช่น 260" value={formData.cost} onChange={e => setFormData({...formData, cost: e.target.value})} />
+                {/* ข้อมูลการขับขี่ (กรอกทีหลัง) */}
+                <div className="bg-gray-50 p-4 rounded-lg space-y-4 border border-gray-100 mt-4">
+
+<Map size={16}/>
+<h3 className="text-sm font-bold text-gray-700 flex items-center gap-2"> ข้อมูลการขับขี่ <span className="text-[10px] font-normal bg-gray-200 px-2 py-0.5 rounded-full ml-auto">ปล่อยว่างไว้มากรอกทีหลังได้</span></h3>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">ระยะทาง (กิโลเมตร)</label>
+                      <input type="number" step="0.1" min="0" className="w-full p-2.5 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2" placeholder="เช่น 300" value={formData.distance || ''} onChange={e => setFormData({...formData, distance: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">แบตเตอรี่คงเหลือ (%)</label>
+                      <input type="number" min="0" max="100" className="w-full p-2.5 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2" placeholder="เช่น 25" value={formData.batteryRemaining || ''} onChange={e => setFormData({...formData, batteryRemaining: e.target.value})} required={!!formData.distance} />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">ราคาไฟ (บาท/kWh)</label>
-                    <input type="number" step="0.01" min="0" required className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2" placeholder="เช่น 7.5" value={formData.pricePerKwh} onChange={e => setFormData({...formData, pricePerKwh: e.target.value})} />
-                  </div>
+                  {formData.distance && !formData.batteryRemaining && (
+                    <p className="text-xs text-red-500 mt-1">* กรุณาระบุเปอร์เซ็นต์แบตเตอรี่คงเหลือเพื่อความแม่นยำ</p>
+                  )}
                 </div>
 
-                <div className="pt-2 border-t border-gray-100">
-                  <label className="block text-sm text-gray-600 mb-1 flex items-center justify-between">
-                    <span>ระยะทางที่ขับได้จากรอบนี้ (กิโลเมตร)</span>
-                    <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">เว้นว่างไว้กรอกทีหลังได้</span>
-                  </label>
-                  <input type="number" step="0.1" min="0" className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2" placeholder="กม. (เช่น 300)" value={formData.distance || ''} onChange={e => setFormData({...formData, distance: e.target.value})} />
-                </div>
-
-                <div className="flex gap-3 pt-4">
+                <div className="flex gap-3 pt-2">
                   {isEditing && (
-                    <button type="button" onClick={() => { setIsEditing(false); setFormData(initialForm); setActiveTab("history"); }} className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-lg">ยกเลิก</button>
+                    <button type="button" onClick={() => { setIsEditing(false); setFormData(initialForm); setActiveTab("history"); }} className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200">ยกเลิก</button>
                   )}
                   <button type="submit" className={`flex-[2] py-3 text-white font-bold rounded-lg shadow-md transition-opacity hover:opacity-90 ${theme.bg}`}>
                     {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกข้อมูล'}
@@ -253,7 +309,7 @@ export default function App() {
             </div>
           )}
 
-          {/* ---- หน้าตั้งค่า (Settings) ---- */}
+          {/* Settings */}
           {activeTab === "settings" && (
             <div className="space-y-6 animate-fade-in">
               <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
@@ -273,16 +329,11 @@ export default function App() {
                   ))}
                 </div>
               </div>
-              
-              <div className="text-center text-sm text-gray-400 pt-4">
-                ข้อมูลทั้งหมดถูกจัดเก็บไว้อย่างปลอดภัยในเครื่องของคุณ
-              </div>
             </div>
           )}
         </div>
       </main>
 
-      {/* Bottom Navigation (ตรึงด้านล่าง) */}
       <nav className="shrink-0 fixed bottom-0 w-full bg-white border-t border-gray-200 z-10 pb-safe">
         <div className="flex justify-around items-center max-w-3xl mx-auto h-16">
           <button onClick={() => setActiveTab("dashboard")} className={`flex flex-col items-center justify-center w-full h-full transition-colors ${activeTab === "dashboard" ? theme.active : "text-gray-400 hover:text-gray-600"}`}>
